@@ -1,5 +1,7 @@
 .venv/
 __pycache__/
-*.py[cod]
+*.pyc
 .streamlit/secrets.toml
 .env
+local_data/
+.pytest_cache/
