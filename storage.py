@@ -84,6 +84,51 @@ class GitHubStore:
                 time.sleep(0.15 * (attempt + 1))
         raise StorageError("A központi vezérlés módosítása ütközött. Próbáld újra.")
 
+    def read_player(self, round_id, player_id):
+        self._validate_ids(round_id, player_id)
+        record, _ = self._read(f"results/{round_id}/{player_id}.json")
+        return record
+
+    @staticmethod
+    def _validate_ids(round_id, player_id):
+        if not all(len(x) == 32 and all(c in "0123456789abcdef" for c in x)
+                   for x in (round_id, player_id)):
+            raise StorageError("Érvénytelen forduló- vagy játékosazonosító")
+
+    def create_player(self, record):
+        """Create without replacing an existing player's record."""
+        rid, pid = record["round_id"], record["player_id"]
+        self._validate_ids(rid, pid)
+        if self.read_player(rid, pid) is not None:
+            raise StorageError("Ez a játékosazonosító már foglalt")
+        try:
+            self._write(f"results/{rid}/{pid}.json", record, None,
+                        f"Enroll player {pid[:8]}")
+        except (ConflictError, StorageError) as exc:
+            raise StorageError("Nem sikerült az új játékos biztonságos létrehozása") from exc
+
+    def update_player(self, round_id, player_id, transform):
+        """Read-modify-write by SHA; concurrent edits to other answers are preserved."""
+        self._validate_ids(round_id, player_id)
+        path = f"results/{round_id}/{player_id}.json"
+        for attempt in range(5):
+            old, sha = self._read(path)
+            if old is None:
+                raise StorageError("Nem található a játékos mentett rekordja")
+            updated = transform(copy.deepcopy(old))
+            if updated is None:
+                raise StorageError("A játékosrekord nem lehet üres")
+            if updated["round_id"] != round_id or updated["player_id"] != player_id:
+                raise StorageError("Nem módosítható a rekord azonosítója")
+            if updated == old:
+                return updated
+            try:
+                self._write(path, updated, sha, f"Update player {player_id[:8]}")
+                return updated
+            except ConflictError:
+                time.sleep(0.15 * (attempt + 1))
+        raise StorageError("A játékos mentése ütközött. Próbáld újra.")
+
     def save_player(self, record):
         rid, pid = record["round_id"], record["player_id"]
         if not all(len(x) == 32 and all(c in "0123456789abcdef" for c in x) for x in (rid, pid)):
@@ -164,6 +209,30 @@ class LocalStore:
             state = self._read("control.json")
             updated = transform(copy.deepcopy(state))
             self._write("control.json", updated)
+            return updated
+
+    def read_player(self, round_id, player_id):
+        with _local_lock:
+            return self._read(f"results/{round_id}/{player_id}.json")
+
+    def create_player(self, record):
+        with _local_lock:
+            key = f"results/{record['round_id']}/{record['player_id']}.json"
+            if self._file(key).is_file():
+                raise StorageError("Ez a játékosazonosító már foglalt")
+            self._write(key, record)
+
+    def update_player(self, round_id, player_id, transform):
+        with _local_lock:
+            key = f"results/{round_id}/{player_id}.json"
+            record = self._read(key)
+            if record is None:
+                raise StorageError("Nem található a játékos mentett rekordja")
+            updated = transform(copy.deepcopy(record))
+            if updated is None or updated["round_id"] != round_id or updated["player_id"] != player_id:
+                raise StorageError("Érvénytelen játékosrekord")
+            if updated != record:
+                self._write(key, updated)
             return updated
 
     def save_player(self, record):

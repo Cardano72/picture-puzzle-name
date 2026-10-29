@@ -70,3 +70,21 @@ def test_github_round_and_player_files(monkeypatch):
     assert [p for p in players if p["name"] == "Anna"][0]["answers"]["almafa"] == "almafa"
     s.delete_player("a" * 32, "b" * 32)
     assert len(s.list_players("a" * 32)) == 1
+
+
+def test_github_read_and_patch_preserve_other_answers(monkeypatch):
+    from resume_logic import with_answer, mark_final
+    fake = FakeGithub()
+    monkeypatch.setattr("storage.requests.request", fake.request)
+    s = GitHubStore("owner", "private", "token")
+    rid, pid = "a" * 32, "b" * 32
+    record = {"round_id": rid, "player_id": pid, "name": "Tomi", "answers": {}, "final": False}
+    s.create_player(record)
+    assert s.read_player(rid, pid)["name"] == "Tomi"
+    s.update_player(rid, pid, lambda r: with_answer(r, "p1", "x"))
+    s.update_player(rid, pid, lambda r: with_answer(r, "p2", "y"))
+    assert s.read_player(rid, pid)["answers"] == {"p1": "x", "p2": "y"}
+    final = s.update_player(rid, pid, mark_final)
+    assert final["final"] is True
+    with __import__("pytest").raises(ValueError):
+        s.update_player(rid, pid, lambda r: with_answer(r, "p1", "late"))

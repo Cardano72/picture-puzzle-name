@@ -1,2 +1,2 @@
-streamlit>=1.37,<2
+streamlit>=1.64,<2
 requests>=2.31,<3
