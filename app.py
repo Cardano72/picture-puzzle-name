@@ -328,11 +328,12 @@ def render_game():
     st.html('<div class="mini-grid">' +
             mini_label("Aktuális feladat", f"{index + 1} / {len(order)}") +
             mini_label("Mentett válaszok", f"{answered} / {len(PUZZLES)}", "lime") +
-            mini_label("Pontozás", "10 / helyes") + '</div>')
+            mini_label("Pontozás", "1 / helyes") + '</div>')
+    st.caption("Minden megszerzett tárgy 3 pont.")
     st.progress(answered / len(PUZZLES))
 
     with st.container(key="puzzle-card"):
-        st.html(f'<div class="puzzle-title"><span class="puzzle-kicker">{index + 1}. KÉPREJTVÉNY / {len(order)}</span><span class="puzzle-points">★ 10 PONT</span></div>')
+        st.html(f'<div class="puzzle-title"><span class="puzzle-kicker">{index + 1}. KÉPREJTVÉNY / {len(order)}</span><span class="puzzle-points">★ 1 PONT</span></div>')
         picture = BASE_DIR / puzzle["image"]
         if picture.is_file():
             st.image(str(picture), use_container_width=True)
@@ -410,21 +411,23 @@ def render_player():
         if phase(control) == "finished":
             st.html(hero("ROUND COMPLETE", "Erre a fordulóra már nem lehet belépni", "Várd meg, amíg a játékvezető új kört nyit!"))
             return
-        st.html(hero("READY, SET, PUZZLE!", "Ki lesz a fejtörők bajnoka?", "Csatlakozz a kihíváshoz, aztán várd meg a játékvezető rajtjelét.", f"{len(PUZZLES)} rejtvény · 10 pont / helyes"))
-        st.html('<div class="mini-grid">' +
-                mini_label("Játék típusa", "Képrejtvény") +
-                mini_label("Közös idő", "Admin indítja", "lime") +
-                mini_label("Forduló", control.get("round_number", 1)) + '</div>')
+        st.html(hero("READY, SET, RIDDLE!", "Lakásavató Pesterzsi 2026", "Tök durva, hogy végre ez is összejött, köszi, hogy itt vagy!", f"{len(PUZZLES)} rejtvény · 1 pont / helyes + 3 pont / begyűjtött tárgy"))
+        st.html('<div class="mini-grid mini-grid--duo">' +
+                mini_label("Játék típusa", "Riddle") +
+            mini_label("Hátralévő idő", "Admin indítja", "lime") + '</div>')
         if phase(control) == "running":
             st.warning(f"A forduló már fut. Most még beszállhatsz, de csak {format_seconds(remaining_seconds(control))} van hátra!")
         with st.container(key="auth-card"):
-            st.html(section_title("Lépj be a játékba", "Csak a becenevedre van szükség", "✦"))
+            st.html(section_title("Ide majd be kell írni a neved, remélem elég egyértelmű", "Pro Tip: Az Admin sörrel lekenyerezhető, de az sem hátrány, ha a felesége vagy", "✦"))
             with st.form("player_join"):
-                name = st.text_input("Játékos neve", max_chars=30, placeholder="Például: Marci")
+                name = st.text_input("Adj egy nevet, buszra kell", max_chars=30, placeholder="Például: Abdul (csak érted, inkább a sajátod legyen, ne az hogy Abdul, mert annak úgy semmi értelme)")
                 join = st.form_submit_button("Indulhat a játék! →", type="primary", use_container_width=True)
             if join:
-                if not name.strip():
-                    st.warning("Adj meg egy nevet!")
+                normalized_name = name.strip().casefold()
+                if not normalized_name:
+                    st.warning("Adj már meg egy nevet!")
+                elif normalized_name == "abdul":
+                    st.warning("De baszki mit nem értettél abból, hogy nem Abdul, hanem a saját neved kell?")
                 else:
                     try:
                         enroll_player(control, name)
@@ -449,9 +452,9 @@ def render_player():
         render_results()
         return
     if actual_state == "lobby":
-        st.html(hero("VÁRÓTEREM · LOBBY", f"Üdv a csapatban, {st.session_state.player_name}!", "Csatlakoztál a játékhoz. Az első feladat az admin rajtjelére jelenik meg.", "Készen állsz?", compact=False))
+        st.html(hero("VÁRÓTEREM · LOBBY", f"Mek mek, {st.session_state.player_name}!", "You are in the end game now. Figyelj az adminra, hogy mikor kezdünk.", "De tényleg figyelj. Nem fogom többször elmagyarázni.", compact=False))
         live_player_panel()
-        st.html(section_title("Rajtra várunk", "Egyelőre nincs teendőd", "◷"))
+        st.html(section_title("Megint csak olvasol, de nem figyelsz.", "Jó, ha olvasol akkor legalább hozz egy sört.", "◷"))
         lobby_population(control["round_id"])
         st.html(status_banner("info", "A játék automatikusan megjelenik, amint a játékvezető elindítja."))
         with st.expander("🔑 Visszatérési kód"):

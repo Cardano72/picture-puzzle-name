@@ -34,7 +34,7 @@ def test_scoring():
     puzzles = [{"id": "a", "answers": ["napszemüveg"]}, {"id": "b", "answers": ["almafa"]}]
     assert is_correct(puzzles[0], "NAP SZEMÜVEG!!")
     result = score(puzzles, {"a": "nap szemuveg", "b": "rossz"})
-    assert result == {"correct": 1, "total": 2, "points": 10, "answered": 2}
+    assert result == {"correct": 1, "total": 2, "points": 1, "answered": 2}
 
 
 def test_local_store_round_isolation(tmp_path):

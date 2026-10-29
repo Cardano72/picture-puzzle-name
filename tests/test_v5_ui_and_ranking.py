@@ -21,7 +21,7 @@ def test_leaderboard_deterministic_sort_and_scores():
     ]
     rows = leaderboard_rows(PUZZLES, records)
     assert [row["nev"] for row in rows] == ["Detti", "Barni", "Marci"]
-    assert [r["pont"] for r in rows] == [30, 10, 10]
+    assert [r["pont"] for r in rows] == [3, 1, 1]
     assert [r["helyezes"] for r in rows] == [1, 2, 3]
     assert rows[0]["vegleges"] == "nem"
 
@@ -44,8 +44,8 @@ def test_ui_escapes_names_and_admin_messages():
     assert malicious not in hero("hi", malicious, "desc")
     assert "&lt;img" in hero("hi", malicious, "desc")
     assert malicious not in announcement(malicious)
-    assert malicious not in result_hero(malicious, 2, 3, 20)
-    rows = [{"nev": malicious, "pont": 30}, {"nev": "Anna", "pont": 20}]
+    assert malicious not in result_hero(malicious, 2, 3, 2)
+    rows = [{"nev": malicious, "pont": 3}, {"nev": "Anna", "pont": 2}]
     assert malicious not in podium(rows)
 
 
@@ -59,13 +59,13 @@ def test_countdown_alert_and_lobby_visuals():
 
 def test_empty_and_partial_podium_safe():
     assert "még nem került" in podium([])
-    assert podium([{"nev": "Tomi", "pont": 10}]).count('podium-blank') == 2
+    assert podium([{"nev": "Tomi", "pont": 1}]).count('podium-blank') == 2
 
 
 def test_saved_assets_present():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
-    assert (root / ".streamlit" / "config.toml").is_file()
+    assert (root / ".streamlit" / "secrets.example.toml").is_file()
     css = (root / "styles" / "modern_party.css").read_text(encoding="utf-8")
     assert ".st-key-puzzle-card" in css
     assert "@media (max-width:640px)" in css
@@ -73,4 +73,4 @@ def test_saved_assets_present():
     app = (root / "app.py").read_text(encoding="utf-8")
     assert 'live="1.5s"' in app
     assert 'run_every="1s"' in app
-    assert 'run_every="10s"' in app
+    assert 'run_every="12s"' in app

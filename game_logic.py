@@ -6,7 +6,7 @@ import time
 import unicodedata
 import uuid
 
-POINTS_PER_CORRECT = 10
+POINTS_PER_CORRECT = 1
 
 
 def new_lobby(round_number=1):

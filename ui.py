@@ -25,7 +25,7 @@ def mini_label(label, value, color="neutral"):
     return f'<div class="mini-stat mini-stat--{safe(color)}"><span>{safe(label)}</span><strong>{safe(value)}</strong></div>'
 
 
-def timer_panel(remaining, state="running", label="KÖZÖS VISSZASZÁMLÁLÓ"):
+def timer_panel(remaining, state="running", label="HÁTRALÉVŐ IDŐ"):
     color = 'urgent' if remaining <= 30 and state == 'running' else 'regular'
     minutes, seconds = divmod(max(0, remaining), 60)
     shown = f'{minutes:02}:{seconds:02}'
