@@ -1,0 +1,37 @@
+[
+  {
+    "id": "nap-szemuveg",
+    "title": "Nap és szemüveg",
+    "image": "images/01_napszemuveg.png",
+    "question": "Milyen összetett szó jut eszedbe a két rajzról?",
+    "answers": ["napszemüveg"]
+  },
+  {
+    "id": "alma-fa",
+    "title": "Alma és fa",
+    "image": "images/02_almafa.png",
+    "question": "Mi a két ábra közös megfejtése?",
+    "answers": ["almafa"]
+  },
+  {
+    "id": "jeg-kave",
+    "title": "Jég és kávé",
+    "image": "images/03_jegeskave.png",
+    "question": "Milyen italt rejtenek az ábrák?",
+    "answers": ["jegeskávé", "jeges kávé"]
+  },
+  {
+    "id": "kutya-haz",
+    "title": "Kutya és ház",
+    "image": "images/04_kutyahaz.png",
+    "question": "Milyen szót raknál össze a két képből?",
+    "answers": ["kutyaház"]
+  },
+  {
+    "id": "ho-ember",
+    "title": "Hó és ember",
+    "image": "images/05_hoember.png",
+    "question": "Melyik összetett szóra gondoltunk?",
+    "answers": ["hóember"]
+  }
+]
