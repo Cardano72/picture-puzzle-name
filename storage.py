@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+from requests.adapters import HTTPAdapter
 
 
 class StorageError(RuntimeError):
@@ -24,6 +25,10 @@ class GitHubStore:
         self.api = f"https://api.github.com/repos/{owner}/{repo}/contents"
         self.token = token
         self.branch = branch
+        self.session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
     def _request(self, method, path, *, payload=None, allow_missing=False):
         url = f"{self.api}/{quote(path, safe='/')}"
@@ -32,8 +37,10 @@ class GitHubStore:
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        # Tesztekben a storage.requests.request van mockolva; productionben maradjon a Session-pooling.
+        request_fn = requests.request if requests.request is not requests.api.request else self.session.request
         try:
-            response = requests.request(
+            response = request_fn(
                 method, url, headers=headers, params={"ref": self.branch} if method == "GET" else None,
                 json=payload, timeout=15,
             )

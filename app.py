@@ -183,12 +183,21 @@ def save_answer(puzzle_id, field_key, *, position=None):
     if answer == current_answer and (position is None or position == current_position) and not st.session_state.get("save_error"):
         return True
     try:
-        # Ne engedjük egy már lezárt fordulóba késve beérkező módosítást.
-        control = store().read_control()
+        # Alapesetben cache-ből döntünk; ez jelentősen csökkenti az API-hívások számát.
+        control = cached_control()
         if not control or control["round_id"] != st.session_state.round_id or phase(control) != "running":
             st.session_state.save_error = "A forduló már nem aktív; új válasz nem menthető."
             cached_control.clear()
             return False
+        # Lejárat közelében kérjünk közvetlen, hiteles állapotot, így nem csúszik át késői mentés.
+        if remaining_seconds(control) <= int(POLL_CACHE_SECONDS) + 1:
+            authoritative = store().read_control()
+            if (not authoritative
+                    or authoritative["round_id"] != st.session_state.round_id
+                    or phase(authoritative) != "running"):
+                st.session_state.save_error = "A forduló már nem aktív; új válasz nem menthető."
+                cached_control.clear()
+                return False
 
         def patch(record):
             if puzzle_id in PUZZLE_IDS and (answer != (record.get("answers") or {}).get(puzzle_id, "")):
@@ -341,8 +350,14 @@ def render_game():
             st.warning(f"A kép nem található: {puzzle['image']}")
         st.html(f'<div class="puzzle-question">{safe(puzzle.get("question", "Mi a megfejtés?"))}</div>')
         field_key = f"answer_{puzzle['id']}"
-        if field_key not in st.session_state:
-            st.session_state[field_key] = st.session_state.answers.get(puzzle["id"], "")
+        saved_answer = st.session_state.answers.get(puzzle["id"], "")
+        last_puzzle_id = st.session_state.get("active_puzzle_id")
+        # Puzzleváltáskor mindig a mentett értéket mutassuk, ne egy korábban beragadt widget-state-et.
+        if last_puzzle_id != puzzle["id"]:
+            st.session_state[field_key] = saved_answer
+            st.session_state.active_puzzle_id = puzzle["id"]
+        elif field_key not in st.session_state:
+            st.session_state[field_key] = saved_answer
         st.text_input(
             "Megfejtés", key=field_key, max_chars=120,
             placeholder="Írd ide a megfejtést…", live="1.5s",
@@ -361,7 +376,7 @@ def render_game():
 
     st.html(section_title("Haladás", "Szabadon lépkedhetsz a rejtvények között", "↗"))
     with st.container(key="game-controls"):
-        left, middle, right = st.columns(3, gap="small", vertical_alignment="center", wrap=False)
+        left, middle, right = st.columns(3, gap="small", vertical_alignment="center", wrap=True)
         if left.button("← Előző", disabled=index == 0, use_container_width=True):
             save_and_navigate(puzzle["id"], field_key, index - 1)
         if middle.button("Mentés", use_container_width=True):
@@ -370,10 +385,10 @@ def render_game():
             save_and_navigate(puzzle["id"], field_key, index + 1)
 
     st.html('<div class="puzzle-jump-hint">Válassz feladatot · ✓ = már van elmentett válasz</div>')
-    # Exactly five buttons per row; stay on one line on smaller phones.
+    # Mobilon is tördülhessen, ne okozzon vízszintes görgetést.
     with st.container(key="jump-grid"):
         for start in range(0, len(order), 5):
-            cols = st.columns(5, gap="small", wrap=False)
+            cols = st.columns(5, gap="small", wrap=True)
             for offset, col in enumerate(cols):
                 target = start + offset
                 if target >= len(order):
