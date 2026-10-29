@@ -17,6 +17,7 @@ def new_lobby(round_number=1):
         "started_at": None,
         "deadline": None,
         "messages": [],
+        "reveal_podium": False,
     }
 
 
@@ -101,4 +102,12 @@ def send_message(control, content, now=None):
         raise ValueError("Az üzenet 1–250 karakterből állhat")
     entry = {"id": uuid.uuid4().hex, "text": message, "sent_at": now if now is not None else time.time()}
     control["messages"] = (control.get("messages") or [])[-19:] + [entry]
+    return control
+
+
+def set_podium_visibility(control, visible):
+    """Show the public podium only after the round has ended."""
+    if visible and phase(control) != "finished":
+        raise ValueError("Dobogót csak a játék lezárása után lehet közzétenni")
+    control["reveal_podium"] = bool(visible)
     return control

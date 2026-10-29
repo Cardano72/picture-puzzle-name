@@ -1,64 +1,134 @@
-# 🧩 Képrejtvény-kihívás – V4
+# 🧩 PUZZLE PARTY — V5 (Modern Party)
 
-**Új a V3-hoz képest:** újracsatlakozás azonos játékosként és automatikus válaszmentés. Megmaradt a közös admin által indított időzítő, élő időmódosítás, üzenetküldés és külön privát GitHub-repositoryban tárolt eredmények rendszere.
+Magyar nyelvű, telefonra optimalizált, Python + Streamlit alapú képrejtvényjáték. A V5 **a V4 összes lényeges képességét megtartja**, és teljesen új, vörös–szürke–fekete (Audi/F1 hangulatú) felületet ad hozzá.
 
-## 1. Frissítés a V3-ról
+## Újdonságok a V5-ben
 
-1. Csomagold ki a ZIP-et, és **a meglévő `picture-puzzle-game` projektbe** másold át a fájlokat (az új `resume_logic.py` is fontos). A `.venv/` mappát és a saját `.streamlit/secrets.toml` fájlt **ne írd felül**.
-2. A VS Code termináljában:
+- Modern Party **reszponzív** megjelenés; különálló, fehér rejtvénykártya a képeknek és a megfejtésnek.
+- **Váróterem**, amely a játékvezető rajtjelére automatikusan átvált a rejtvényekre.
+- **Játékosfelület**: közös élő visszaszámláló, 5-ös rácsban számozott, tetszőlegesen választható feladatok, előző/következő gombok, mentési státusz.
+- **Admin dashboard**: közös óra, ±1 perc, pontos hátralévő idő, üzenetküldés, élő eredménylista és CSV-export.
+- **Játék vége**: a játékos csak a lezárás tényét látja; részletes eredmény kizárólag az admin felületen jelenik meg.
+- **Dobogó**: admin az *eredményhirdetéskor* teheti közzé vagy rejtheti el az admin nézetben.
+- A HTML-ben szereplő játékosnevek és adminüzenetek biztonságosan HTML-escape-elve vannak.
 
-   ```powershell
-   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-   .\.venv\Scripts\python.exe -m streamlit run app.py
-   ```
+Megmaradt: játékosonkénti véletlen sorrend, admin által indított közös időzítés, élő időmódosítás, központi adminüzenetek, külön JSON minden játékosnak, privát GitHub-repository, automatikus válaszmentés, személyes visszatérési link/kód, fordulóváltás, ranglista, adminjelszó és játékosok egyedi törlése.
 
-3. Indíts új fordulót az adminfelületen. **A V3 alatt létrehozott játékosrekordokhoz nincs visszatérési kód**, ezért az új csatlakozási funkció csak az V4-ben létrehozott játékosokra vonatkozik.
-4. Ha helyben működik, `git add .`, `git commit -m "Add player resume and autosave"`, `git push`. A Streamlit Cloud a publikus kódrepo változásából frissül; nincs szükség új GitHub-tokenre.
-5. **FONTOS:** a V4 `streamlit>=1.64,<2` csomagot kíván. A `st.text_input(live="1.5s")` korábbi Streamlit-verzióval hibát ad.
+## A V4 frissítése V5-re
 
-## 2. Játékosok újracsatlakozása
+1. **Készíts biztonsági másolatot** a V4-es helyi projektedről vagy commitold a jelenlegi változatot.
+2. A ZIP-ben lévő fájlokat másold be a meglévő `picture-puzzle-game` mappába; a meglévő fájlok közül az `app.py` és `game_logic.py` lecserélendő, a `storage.py` és `resume_logic.py` kompatibilis a V4-gyel.
+3. **Ne írd felül** a saját `.streamlit/secrets.toml` fájlodat, a `.venv/` mappát, illetve a testreszabott `puzzles.json` és `images/` fájlokat.
+4. **Új fájlok**: `ui.py`, `leaderboard.py`, `styles/modern_party.css`, `.streamlit/config.toml`, `requirements-dev.txt` és az új teszt.
+5. A már létrehozott privát `picture-puzzle-results` GitHub-repository és token továbbra is megfelelő. A korábbi fordulók és játékosfájlok formátumát nem kell migrálni. A `reveal_podium` mező hiánya az előző fordulókban egyszerűen `false` értéknek számít.
 
-- A V4 csatlakozáskor generál egy **véletlen, 43 karakteres visszatérési kódot**, és beleírja az oldal címébe (`?round=...&resume=...`).
-- Könyvjelzőzéssel, a cím elmentésével **ugyanazon a mobilon, oldalfrissítés után is** folytatható a játék; másik eszközön a teljes link megnyitásával vagy az elmentett kód beírásával is.
-- A privát GitHub-adattárba **csak a kód SHA-256 lenyomata** kerül, az eredeti kód nem. Az eredményfájl neve a lenyomat 32 karakteres előtagja, így a név továbbra sem ütközik.
-- Ugyanazok a válaszok, ugyanaz a véletlenszerű sorrend és az utolsó rejtvénypozíció töltődik vissza. A közös lejárati idő nem indul újra!
-- Ha a közös forduló már lejárt, ugyanazzal a linkkel visszatérve a **végső eredmény** tekinthető meg.
-- Egy új adminforduló **új belépést** kér. Régi linkkel nem lehet az új forduló régi válaszait felülírni.
-- **A visszatérési kód titkos:** aki birtokolja a linket vagy a kódot, hozzáférhet ahhoz a játékosrekordhoz. Ne oszd meg nyilvános csoportban!
-- **A közös QR-kódba kizárólag az alkalmazás alapcíme kerüljön**, például `https://keprejtveny-party.streamlit.app/` — **ne** a játékos személyes `?round=...&resume=...` címe!
+Projektstruktúra:
 
-## 3. Válaszok automatikus mentése
+```text
+picture-puzzle-game/
+├── app.py
+├── game_logic.py
+├── leaderboard.py
+├── resume_logic.py
+├── storage.py
+├── ui.py
+├── puzzles.json
+├── images/
+│   └── 01_napszemuveg.png ... (5 minta)
+├── styles/
+│   └── modern_party.css
+├── .streamlit/
+│   ├── config.toml
+│   └── secrets.example.toml
+├── tests/
+├── requirements.txt
+├── requirements-dev.txt
+├── .gitignore
+└── README.md
+```
 
-- A beviteli mező `live="1.5s"` beállításával a Streamlit **1,5 másodperc gépelési szünet után** elküldi az új szöveget a szervernek. A callback az adott rejtvény válaszát menti a privát GitHub JSON-fájlba, nem a teljes válaszlistát írja felül.
-- Az **Előző / Következő / Ugrás / Mentés** gombok a mező aktuális értékét azonnal elküldik. Csak sikeres mentés után navigálunk.
-- A képernyőn `✅ Automatikusan elmentve` vagy `⚠️ Nincs elmentve` és **Mentés újrapróbálása** jelenik meg.
-- Ha egy másik lapon vagy eszközön ugyanazzal a visszatérési kóddal játszanak, a különböző rejtvények mentéseit **mezőnként egyesítjük**, így nem írják felül egymás válaszlistáját. **Ugyanazon feladatra** versengő írások közül a későbbi mentés lesz érvényes.
-- A játék végén a **GitHubon ténylegesen mentett** válaszokat számoljuk. Ha a böngészőt az utolsó 1,5 másodperces gépelési szünet előtt bezárják, az utolsó néhány karakter elveszhet. Ezért a **Mentés** gombot is meghagytuk, főleg az utolsó másodpercekhez.
-- GitHub-kapcsolati hiba esetén nem állítjuk, hogy mentettünk; a mező szövege helyben megmarad és újra küldhető, amíg a forduló aktív.
+## Indítás Windows / VS Code alatt
 
-## 4. Teszteld ezt a forgatókönyvet
-
-1. Indíts egy üres fordulót az adminfelületen, csatlakozz játékosként (a játékos böngészőben **mentsd el a linket**).
-2. Admin oldalon indítsd el a fordulót 5 percre.
-3. Írj be egy megfejtést; várj legalább 2 másodpercet. A mező alatt jelenjen meg a mentési visszajelzés, a privát repositoryban frissüljön a játékos JSON-jának `answers` mezője.
-4. Ugrás a 3. rejtvényre, írj be még egy választ, majd nyomd meg a **Mentés** gombot.
-5. **Frissítsd a játékos böngészőjét**. Ugyanazzal a névvel, válaszokkal, sorrenddel és pozícióval kell visszalépnie; az idő **nem** nullázódik.
-6. A mentett linket próbáld ki inkognitóablakban is. Ott is ugyanaz a játékos nyíljon meg (ez bizonyítja, hogy a folytatás nem csak helyi cookie-n múlik).
-7. Admin oldalon módosítsd a közös időt, küldj üzenetet, majd hagyd lejárni a fordulót. A játékos visszatérő linkje a végső eredményt mutassa.
-8. Indíts új adminfordulót, és nyisd meg a régi mentett linket: a V4 jelezze, hogy az **előző fordulóhoz tartozik**.
-
-## 5. Figyelmeztetések
-
-- A GitHub Contents API nem valódi adatbázis. 10–20 játékosnak általában megfelelő, de a 1,5 másodperces debouncing ellenére sok gyors mentés API-korlátba ütközhet. A teljes terhelést teszteljétek egy éles próbafordulóban.
-- A játékosok az `app.py` és `puzzles.json` publikus fájljait megtekinthetik. A helyes megoldások így megismerhetők. A baráti, kötetlen játékban ez tudatos kompromisszum.
-- A GitHub-fájlokat a korábbi commitok is megőrizhetik. Használj beceneveket, ne gyűjts érzékeny személyes adatokat.
-- Az admin központi időmódosítása és az üzenetek megjelenése továbbra is néhány másodpercet késhet; nem valódi push rendszer.
-- Ha a forduló **lejárta után** érkezik meg egy válasz, azt a V4 elutasítja. Az ellenőrzés és a GitHub-írás között marad egy rövid technikai versenyhelyzet; komoly versenyhez valódi backend/adatbázis kell.
-- A régi V3 rekordok formátuma nincs felülírva. Ha az újracsatlakozást akarod kipróbálni, **új fordulóban, új V4 játékosként lépj be**.
-
-## 6. Tesztek
+A projekt gyökérmappájából, a Python 3.13-as `.venv` virtuális környezeteddel:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install pytest
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Böngésző: `http://localhost:8501`.
+
+Ha még nincs `.streamlit/secrets.toml`, készíts másolatot a `.streamlit/secrets.example.toml` fájlról:
+
+```toml
+STORAGE_MODE = "local"
+ADMIN_PASSWORD = "CSERELD_EROS_JELSZORA_123"
+```
+
+GitHub-adattároláshoz a saját (NEM nyilvános!) secrets fájlodban:
+
+```toml
+STORAGE_MODE = "github"
+ADMIN_PASSWORD = "legalabb_12_karakteres_jelszo"
+GITHUB_OWNER = "sajat_github_felhasznalonev"
+GITHUB_REPO = "picture-puzzle-results"
+GITHUB_BRANCH = "main"
+GITHUB_TOKEN = "github_pat_..."
+```
+
+A `secrets.toml` a `.gitignore` szabályával ki van zárva a feltöltésből. **Soha ne másold bele a tokent a `secrets.example.toml` vagy a `config.toml` fájlba!**
+
+## Első V5 játék tesztelése
+
+1. Nyisd meg a játékot **két külön böngésző-munkamenetben** (például normál és inkognitóablak), az admin és a játékos részére.
+2. A bal felső menün keresztül válts az **Admin** nézetre, és jelentkezz be a jelszóval.
+3. Hozz létre egy fordulót; a játékos ablakában add meg a nevet. A játékos **váróterembe** kerül.
+4. Admin indítsa el az 5 perces játékot. A játékosnál a képrejtvények megnyílnak (néhány másodpercen belül).
+5. Írj be egy választ; várj kb. **1,5 másodpercet**. A mentési státusz jelzi, hogy a központi JSON frissült. Próbáld a számozott feladatugrást, a visszalépést és a Mentés gombot is.
+6. Mentsd el a játékos teljes `?round=...&resume=...` címét. Frissítés, bezárás, majd a link újranyitása után ugyanazok a válaszok és feladatsorrend jöjjön vissza.
+7. Admin változtassa meg az időt, és küldjön üzenetet. A közös óra és üzenet a játékosnál frissül.
+8. Várd meg a végét vagy zárd le adminból. A játékosnál csak a lezárás jelenjen meg, részletes pontszám és megoldáslista nélkül.
+9. Admin nézetben ellenőrizd a **ranglistát és a dobogót**, majd válaszd a **Dobogó közzététele** funkciót.
+10. Hozz létre új fordulót; annak a ranglistája legyen üres, a korábbi JSON-fájlok maradjanak meg a privát repositoryban.
+
+## GitHub + Streamlit Cloud publikálás
+
+Ha helyben minden működik:
+
+```powershell
+git status
+git ls-files -- .streamlit/secrets.toml
+# Az előző parancs kimenete legyen üres!
+git add .
+git commit -m "Modern Party V5 interface and podium"
+git push
+```
+
+A Streamlit Community Cloud a publikus játékrepositoryból frissíti a futó alkalmazást. A Cloud **App settings → Secrets** beállításai maradjanak a korábban megadott értékeken; az adatokat továbbra is a privát `picture-puzzle-results` repository tárolja.
+
+## Saját rejtvények
+
+A `puzzles.json` lista minden eleme `id`, `title`, `image`, `question`, `answers` mezőket tartalmaz. Az `answers` listába több elfogadott változat is kerülhet. A válaszellenőrzés figyelmen kívül hagyja az ékezeteket, a nagybetűket, a szóközöket és egyes írásjeleket. Az `id`-k legyenek egyediek; **futó forduló alatt ne változtasd a rejtvények számát vagy sorrendjét**. A képfájlok elérési útjai a projekt gyökeréhez képest értendők.
+
+## Mitől élő a rendszer?
+
+A számlálót a Streamlit `st.fragment(run_every="1s")` frissíti; a központi óra admin által tárolt `deadline` időbélyegből számolódik. Az adminüzenetek és az időmódosítás az időnként lekért `control.json`-on keresztül jut el a játékosokhoz. Nem valódi WebSocket push: tipikusan néhány másodperces késés várható. A ranglista frissítése adminnál 30 másodperces, az egyes eredményfájlok lekérésén 25 másodperces cache van; kézi frissítés is elérhető.
+
+## Fontos korlátok
+
+- **GitHub Contents API ≠ adatbázis.** A JSON-fájlok külön mentődnek, de 10–20 játékossal is érdemes éles főpróbát tartani; gyors gépelés, sok mentés vagy ütköző műveletek esetén API-korlátok léphetnek fel.
+- Az automatikus mentés **1,5 másodperces gépelési szünet után** indul; ha valaki gyorsan bezárja a böngészőt vagy lejár az idő, a legutóbbi néhány karakter elveszhet. A Mentés gomb azonnal elküldi a mező értékét.
+- Az `app.py` és a `puzzles.json` a publikus kódrepositoriban **bárki számára olvasható**. Baráti játékra jó kompromisszum, de komoly, csalásbiztos versenyhez privát válaszellenőrzés és valódi backend szükséges.
+- **Visszatérési kód**: titkos jogosultsági kulcs, aki ismeri, hozzáférhet a mentett játékhoz. A közös QR-kódba csak a Streamlit app alap URL-jét tedd.
+- A GitHub-kapcsolat és a Streamlit feldolgozás időigénye miatt az idő lejárásának pillanatában lehet egy rövid versenyhelyzet. A program ellenőrzi az aktív fordulót mentés előtt, de garantáltan csalásbiztos megoldáshoz adatbázis-tranzakció kellene.
+- Egy korábbi commit a GitHubon törölt eredmények adatait továbbra is tartalmazhatja, ezért érdemes csak beceneveket gyűjteni.
+- A felhasználói felület **nem lett valós böngészőben end-to-end tesztelve ezen a készítési környezeten belül**; a projekt szintaxisa, backendje és HTML-generálása automatikusan tesztelve van. Éles parti előtt futtasd végig a fenti próbafordulót.
+
+## Automatizált tesztek
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m pytest -q
 ```
+
+A tesztek a közös időt, a késleltetett válaszok elutasítását, a pontozást, a lokális/GitHub JSON-kezelést, a visszacsatlakozási kulcsot, az adatok megőrzését, a dobogó közzétételi szabályát és a HTML-szövegek escape-elését vizsgálják.

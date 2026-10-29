@@ -1,4 +1,4 @@
-"""Képrejtvény V4 – közös időzítő, automatikus mentés, biztonságos visszacsatlakozás."""
+"""PUZZLE PARTY V5 – reszponzív játék és közös GitHub-alapú forduló."""
 
 import csv
 import hmac
@@ -6,24 +6,33 @@ import io
 import json
 import random
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import streamlit as st
 
 from game_logic import (
     end_round, format_seconds, new_lobby, phase, remaining_seconds,
-    score, send_message, set_remaining, start_round,
+    send_message, set_remaining, start_round, set_podium_visibility,
 )
 from resume_logic import (
     mark_final, new_resume_credentials, recover_player_id,
     valid_order, verify_resume, with_answer, with_position,
 )
 from storage import GitHubStore, LocalStore, StorageError
+from leaderboard import leaderboard_rows
+from ui import (header, hero, section_title, mini_label, timer_panel,
+                status_banner, announcement, stat_card, podium, safe)
 
 BASE_DIR = Path(__file__).resolve().parent
-POLL_CACHE_SECONDS = 3.5  # Több munkamenetnek közös cache, GitHub-kímélő lekérdezés.
+POLL_CACHE_SECONDS = 3.5  # Shared control cache across active sessions.
 
-st.set_page_config(page_title="Képrejtvény kihívás", page_icon="🧩", layout="centered")
+st.set_page_config(
+    page_title="Puzzle Party | Képrejtvény kihívás", page_icon="🧩",
+    layout="wide", initial_sidebar_state="collapsed",
+)
+st.html(BASE_DIR / "styles" / "modern_party.css")
 
 
 def read_settings():
@@ -59,6 +68,11 @@ def store():
 @st.cache_data(ttl=POLL_CACHE_SECONDS, show_spinner=False)
 def cached_control():
     return store().read_control()
+
+
+@st.cache_data(ttl=25, show_spinner=False)
+def cached_players(round_id):
+    return store().list_players(round_id)
 
 
 def change_control(transform):
@@ -115,6 +129,7 @@ def enroll_player(control, name):
         "updated_at": time.time(),
     }
     store().create_player(record)
+    cached_players.clear()
     load_record_to_session(record, token)
     st.query_params.from_dict({"round": control["round_id"], "resume": token})
 
@@ -199,173 +214,192 @@ def on_answer_change(puzzle_id, field_key):
     save_answer(puzzle_id, field_key)
 
 
+
 def show_messages(control):
+    """Announcement from central control (already escaped inside ui.announcement)."""
     messages = control.get("messages") or []
     if not messages:
         return
     latest = messages[-1]
     if st.session_state.get("seen_message") != latest["id"]:
         st.session_state.seen_message = latest["id"]
-        st.toast("📣 Új adminüzenet érkezett!", icon="📣")
-    st.info(f"📣 **Adminüzenet:** {latest['text']}")
-    with st.expander("Korábbi adminüzenetek"):
-        for msg in reversed(messages[:-1]):
-            st.write(f"• {msg['text']}")
+        st.toast("Új üzenet a játékvezetőtől!", icon="📣")
+    st.html(announcement(latest["text"], datetime.fromtimestamp(latest["sent_at"], ZoneInfo("Europe/Budapest")).strftime("%H:%M")))
+    if len(messages) > 1:
+        with st.expander("Korábbi játékvezetői üzenetek"):
+            for msg in reversed(messages[:-1]):
+                st.markdown(f"**{datetime.fromtimestamp(msg['sent_at'], ZoneInfo('Europe/Budapest')).strftime('%H:%M')}** · {msg['text']}")
+
+
+def current_phase_verified(control):
+    """A cached expiration must be checked against storage before finalizing."""
+    if phase(control) != "finished":
+        return phase(control)
+    authoritative = store().read_control()
+    if not authoritative or authoritative["round_id"] != control["round_id"]:
+        cached_control.clear()
+        st.rerun()
+    actual = phase(authoritative)
+    if actual != "finished":
+        cached_control.clear()
+        st.rerun()
+    return "finished"
 
 
 @st.fragment(run_every="1s")
 def live_player_panel():
-    """A számláló fragmentként frissül, nem írja át az aktív szövegmezőt."""
+    """Live, independent refresh; typing is not interrupted by the timer."""
     try:
-        latest = cached_control()
-    except StorageError as exc:
-        st.warning(f"A közös idő és az üzenetek átmenetileg nem érhetők el: {exc}")
-        return
-    if not latest:
-        st.warning("Adminisztrátori beállításra várunk.")
-        return
-    if st.session_state.round_id != latest["round_id"]:
-        st.rerun()
-    current_phase = phase(latest)
-    if current_phase == "lobby":
-        st.info("⏳ Várakozás: az admin még nem indította el a fordulót.")
-        show_messages(latest)
-        return
-    if current_phase == "running":
-        if st.session_state.pop("was_waiting", False):
-            st.rerun()
-        st.metric("⏳ Közös hátralévő idő", format_seconds(remaining_seconds(latest)))
-        show_messages(latest)
-        return
-    # A lejárást nem elég a cache-ből megállapítani, admin közben módosíthatta.
-    if time.time() - st.session_state.get("last_end_check", 0) < 4:
-        st.caption("Lejárat ellenőrzése…")
-        return
-    st.session_state.last_end_check = time.time()
-    try:
-        authoritative = store().read_control()
+        control = cached_control()
     except StorageError:
-        st.warning("Kapcsolati hiba: a játék lezárását újraellenőrizzük.")
+        st.html(status_banner("warn", "A közös óra szinkronizálása átmenetileg nem sikerült."))
         return
-    if authoritative and authoritative["round_id"] != st.session_state.round_id:
+    if not control or control["round_id"] != st.session_state.round_id:
         st.rerun()
-    if authoritative and phase(authoritative) == "finished":
-        st.session_state.finished = True
+    state = phase(control)
+    if state != st.session_state.get("_screen_phase"):
+        if state == "finished":
+            # Admin may have extended the clock just after cache expiry.
+            fresh = store().read_control()
+            if fresh and phase(fresh) != "finished":
+                cached_control.clear()
+                return
         st.rerun()
-    st.caption("Időmódosítás ellenőrzése…")
+    st.html(timer_panel(remaining_seconds(control), state))
+    show_messages(control)
 
 
-@st.fragment(run_every="3s")
-def finished_round_watcher():
+@st.fragment(run_every="6s")
+def round_change_watcher():
+    """Finished players keep their result while a new round is announced."""
     try:
-        latest = cached_control()
-        if latest and latest["round_id"] != st.session_state.round_id:
-            st.rerun()
-        if latest:
-            show_messages(latest)
+        current = cached_control()
+        if current and current["round_id"] != st.session_state.round_id:
+            st.html(status_banner("info", "Új forduló indult! Nyisd meg újra az alaplinket a csatlakozáshoz."))
     except StorageError:
-        st.caption("A következő forduló ellenőrzése átmenetileg nem sikerült.")
+        st.caption("A következő forduló ellenőrzése nem sikerült.")
+
+
+@st.fragment(run_every="12s")
+def lobby_population(round_id):
+    try:
+        count = len(cached_players(round_id))
+        st.html(mini_label("Csatlakozott játékosok", count, "lime"))
+    except StorageError:
+        st.caption("A játékoslétszám átmenetileg nem érhető el.")
 
 
 def render_results():
-    st.success(f"Véget ért a forduló, {st.session_state.player_name}!")
+    st.html(hero("GAME OVER", "Véget ért a játék!", "A játék lezárult. A részletes eredmények csak az admin felületén láthatók.", compact=True))
     try:
-        # Kizárólag a távolról, sikeresen mentett válaszokat pontozzuk.
+        # Persisted answers are the only inputs to scoring. A final record is idempotent.
         saved = store().update_player(
             st.session_state.round_id, st.session_state.player_id, mark_final
         )
         st.session_state.answers = saved.get("answers") or {}
         st.session_state.finished = True
-        st.caption("✅ Az eredmény központilag elmentve.")
     except (StorageError, ValueError) as exc:
-        st.error(f"Nem sikerült véglegesíteni az eredményt: {exc}")
-        if st.button("🔄 Véglegesítés újrapróbálása"):
+        st.error(f"Az eredmény véglegesítése nem sikerült: {exc}")
+        if st.button("Újrapróbálom a véglegesítést", type="primary"):
             st.rerun()
         return
-    result = score(PUZZLES, st.session_state.answers)
-    one, two = st.columns(2)
-    one.metric("Helyes megfejtés", f"{result['correct']} / {result['total']}")
-    two.metric("Pontszám", result["points"])
-    with st.expander("Megoldásaim"):
-        from game_logic import is_correct
-        for position in st.session_state.order:
-            puzzle = PUZZLES[position]
-            answer = st.session_state.answers.get(puzzle["id"], "")
-            symbol = "✅" if is_correct(puzzle, answer) else "❌"
-            st.write(f"{symbol} **{puzzle['title']}** — {answer or 'nincs válasz'} · helyes: {puzzle['answers'][0]}")
-    st.info("A következő fordulót az admin indítja; az új fordulóhoz majd újra csatlakozhatsz.")
-    finished_round_watcher()
+    st.html(status_banner("ok", "A játékod lezárva és mentve. Az eredményt a játékvezető látja az admin nézetben."))
+    with st.expander("🔑 Visszatérési link és kód"):
+        st.caption("Mentsd el a jelenlegi oldal teljes URL-jét, vagy ezt a kódot. Ne oszd meg nyilvánosan!")
+        st.code(st.session_state.resume_token, language=None)
+    round_change_watcher()
+
+
+def save_and_navigate(puzzle_id, field_key, destination):
+    if save_answer(puzzle_id, field_key, position=destination):
+        st.rerun()
+    else:
+        st.warning("A navigáláshoz előbb sikeresen el kell menteni a választ.")
 
 
 def render_game():
-    st.write(f"Játékos: **{st.session_state.player_name}**")
-    live_player_panel()
-    if st.session_state.get("finished"):
-        return
     order = st.session_state.order
     index = st.session_state.position
     puzzle = PUZZLES[order[index]]
     answered = sum(bool(str(st.session_state.answers.get(p["id"], "")).strip()) for p in PUZZLES)
-    st.progress(answered / len(PUZZLES), text=f"Sikeresen mentett válaszok: {answered}/{len(PUZZLES)}")
-    st.subheader(f"{index + 1}. rejtvény / {len(PUZZLES)}")
-    picture = BASE_DIR / puzzle["image"]
-    if picture.is_file():
-        st.image(str(picture), use_container_width=True)
-    else:
-        st.warning(f"Hiányzó képfájl: {puzzle['image']}")
-    st.write(puzzle.get("question", "Mi a megfejtés?"))
 
-    # A legutolsó, helyben szerkesztett választ a widget tartja meg egy mentési hiba esetén is.
-    field_key = f"answer_{puzzle['id']}"
-    if field_key not in st.session_state:
-        st.session_state[field_key] = st.session_state.answers.get(puzzle["id"], "")
-    st.text_input(
-        "Megfejtés", key=field_key, max_chars=120,
-        placeholder="Írd ide a választ…", live="1.5s",
-        on_change=on_answer_change, args=(puzzle["id"], field_key),
-        help="Rövid gépelési szünet után automatikusan a központi adattárba mentjük.",
-    )
-    if st.session_state.get("save_error"):
-        st.error(f"⚠️ Nincs elmentve: {st.session_state.save_error}")
-        if st.button("🔄 Mentés újrapróbálása", key=f"retry_{puzzle['id']}"):
-            if save_answer(puzzle["id"], field_key):
-                st.rerun()
-    elif st.session_state.get("last_saved") and st.session_state.get("last_saved_puzzle") == puzzle["id"]:
-        st.caption(f"✅ Automatikusan elmentve · {st.session_state.last_saved}")
-    else:
-        st.caption("A válasz beírása után kb. 1,5 másodperccel automatikus mentés történik.")
+    st.html(hero("PUZZLE CHALLENGE", f"Hajrá, {st.session_state.player_name}!", "Fejtsd meg a képeket, és gyűjtsd a pontokat. Az óra mindenkinek közös.", "A játék folyamatban", compact=True))
+    live_player_panel()
+    st.html('<div class="mini-grid">' +
+            mini_label("Aktuális feladat", f"{index + 1} / {len(order)}") +
+            mini_label("Mentett válaszok", f"{answered} / {len(PUZZLES)}", "lime") +
+            mini_label("Pontozás", "10 / helyes") + '</div>')
+    st.progress(answered / len(PUZZLES))
 
-    left, mid, right = st.columns(3)
-    back = left.button("⬅ Előző", disabled=index == 0, use_container_width=True)
-    save = mid.button("💾 Mentés", use_container_width=True)
-    next_ = right.button("Következő ➡", disabled=index == len(order) - 1, use_container_width=True)
-    target = st.selectbox("Ugrás másik rejtvényhez", range(len(order)), index=index, format_func=lambda p: f"{p + 1}. rejtvény")
-    jump = st.button("Ugrás", use_container_width=True)
-
-    if back or next_ or jump or save:
-        dest = index - 1 if back else index + 1 if next_ else target if jump else index
-        if save_answer(puzzle["id"], field_key, position=dest):
-            st.rerun()
+    with st.container(key="puzzle-card"):
+        st.html(f'<div class="puzzle-title"><span class="puzzle-kicker">{index + 1}. KÉPREJTVÉNY / {len(order)}</span><span class="puzzle-points">★ 10 PONT</span></div>')
+        picture = BASE_DIR / puzzle["image"]
+        if picture.is_file():
+            st.image(str(picture), use_container_width=True)
         else:
-            st.warning("Az oldalváltás előtt mentsd el a választ; ellenőrizd a kapcsolatot.")
+            st.warning(f"A kép nem található: {puzzle['image']}")
+        st.html(f'<div class="puzzle-question">{safe(puzzle.get("question", "Mi a megfejtés?"))}</div>')
+        field_key = f"answer_{puzzle['id']}"
+        if field_key not in st.session_state:
+            st.session_state[field_key] = st.session_state.answers.get(puzzle["id"], "")
+        st.text_input(
+            "Megfejtés", key=field_key, max_chars=120,
+            placeholder="Írd ide a megfejtést…", live="1.5s",
+            on_change=on_answer_change, args=(puzzle["id"], field_key),
+            help="Gépelési szünet után a rendszer központilag elmenti a választ.",
+        )
+        if st.session_state.get("save_error"):
+            st.html(status_banner("warn", f"Nincs elmentve: {st.session_state.save_error}"))
+            if st.button("🔄 Mentés újrapróbálása", key=f"retry_{puzzle['id']}"):
+                save_answer(puzzle["id"], field_key)
+                st.rerun()
+        elif st.session_state.get("last_saved") and st.session_state.get("last_saved_puzzle") == puzzle["id"]:
+            st.html(status_banner("ok", f"Mentve · {st.session_state.last_saved}"))
+        else:
+            st.html(status_banner("info", "Automatikus mentés gépelés után, vagy a Mentés gombbal."))
 
-    with st.expander("🔑 Visszatérés másik böngészőből"):
-        st.write("Könyvjelzőzd ezt az oldalt, vagy másold le az alábbi visszatérési kódot. A kód birtokában bárki hozzáférhet a mentett játékmenetedhez!")
+    st.html(section_title("Haladás", "Szabadon lépkedhetsz a rejtvények között", "↗"))
+    with st.container(key="game-controls"):
+        left, middle, right = st.columns(3, gap="small", vertical_alignment="center", wrap=False)
+        if left.button("← Előző", disabled=index == 0, use_container_width=True):
+            save_and_navigate(puzzle["id"], field_key, index - 1)
+        if middle.button("Mentés", use_container_width=True):
+            save_and_navigate(puzzle["id"], field_key, index)
+        if right.button("Következő →", disabled=index == len(order) - 1, type="primary", use_container_width=True):
+            save_and_navigate(puzzle["id"], field_key, index + 1)
+
+    st.html('<div class="puzzle-jump-hint">Válassz feladatot · ✓ = már van elmentett válasz</div>')
+    # Exactly five buttons per row; stay on one line on smaller phones.
+    with st.container(key="jump-grid"):
+        for start in range(0, len(order), 5):
+            cols = st.columns(5, gap="small", wrap=False)
+            for offset, col in enumerate(cols):
+                target = start + offset
+                if target >= len(order):
+                    continue
+                selected_puzzle = PUZZLES[order[target]]
+                has_answer = bool(str(st.session_state.answers.get(selected_puzzle["id"], "")).strip())
+                label = f"{target + 1}{' ✓' if has_answer else ''}"
+                if col.button(label, key=f"jump_{target}", type="primary" if target == index else "secondary", use_container_width=True):
+                    save_and_navigate(puzzle["id"], field_key, target)
+
+    with st.expander("🔑 Visszatérési link / kód"):
+        st.write("Mentsd el a jelenlegi oldal teljes címét, vagy az alábbi kódot, így ugyanoda térhetsz vissza.")
         st.code(st.session_state.resume_token, language=None)
-        st.caption("A jelenlegi oldal URL-jében is szerepel a visszatérési kód. Ne oszd meg nyilvánosan.")
+        st.caption("A visszatérési link titkos: aki megszerzi, hozzáférhet a válaszaidhoz.")
 
 
 def render_player():
-    st.header("🎮 Játék")
     if MODE == "local":
-        st.caption("🧪 Helyi tesztmód — a mentés csak ezen a gépen történik.")
+        st.html('<div class="mode-banner">🧪 HELYI TESZTMÓD · Az adatok csak ezen a gépen maradnak.</div>')
     try:
         control = cached_control()
     except StorageError as exc:
-        st.error(f"Nem sikerült elérni a központi játékállapotot: {exc}")
+        st.error(f"A közös játékállapot nem érhető el: {exc}")
         return
     if not control:
-        st.info("A játék még nincs beállítva. Az admin felületen hozd létre az első fordulót.")
+        st.html(hero("WELCOME TO THE PARTY", "Képrejtvény kihívás", "A játékvezető hamarosan létrehozza az első fordulót. Addig is készüljetek a fejtörésre!"))
+        st.info("A forduló előkészítésére várunk. A játékvezető az Admin nézetben indíthatja el.")
         return
     try:
         logged_in = try_restore(control)
@@ -374,77 +408,94 @@ def render_player():
         return
     if not logged_in:
         if phase(control) == "finished":
-            st.info("Ez a forduló már véget ért. A következőre várunk.")
+            st.html(hero("ROUND COMPLETE", "Erre a fordulóra már nem lehet belépni", "Várd meg, amíg a játékvezető új kört nyit!"))
             return
-        st.write(f"**{len(PUZZLES)} rejtvény** · Közös, admin által vezérelt időkeret")
+        st.html(hero("READY, SET, PUZZLE!", "Ki lesz a fejtörők bajnoka?", "Csatlakozz a kihíváshoz, aztán várd meg a játékvezető rajtjelét.", f"{len(PUZZLES)} rejtvény · 10 pont / helyes"))
+        st.html('<div class="mini-grid">' +
+                mini_label("Játék típusa", "Képrejtvény") +
+                mini_label("Közös idő", "Admin indítja", "lime") +
+                mini_label("Forduló", control.get("round_number", 1)) + '</div>')
         if phase(control) == "running":
-            st.warning(f"A játék már elkezdődött. Becsatlakozhatsz, de csak {format_seconds(remaining_seconds(control))} időd marad.")
-        with st.form("player_join"):
-            name = st.text_input("Játékos neve", max_chars=30)
-            join = st.form_submit_button("Csatlakozás", type="primary", use_container_width=True)
-        if join:
-            if not name.strip():
-                st.warning("Adj meg egy nevet!")
-            else:
-                try:
-                    enroll_player(control, name)
+            st.warning(f"A forduló már fut. Most még beszállhatsz, de csak {format_seconds(remaining_seconds(control))} van hátra!")
+        with st.container(key="auth-card"):
+            st.html(section_title("Lépj be a játékba", "Csak a becenevedre van szükség", "✦"))
+            with st.form("player_join"):
+                name = st.text_input("Játékos neve", max_chars=30, placeholder="Például: Marci")
+                join = st.form_submit_button("Indulhat a játék! →", type="primary", use_container_width=True)
+            if join:
+                if not name.strip():
+                    st.warning("Adj meg egy nevet!")
+                else:
+                    try:
+                        enroll_player(control, name)
+                        st.rerun()
+                    except StorageError as exc:
+                        st.error(f"Nem sikerült csatlakozni: {exc}")
+            with st.expander("🔑 Már játszottam · visszalépés kóddal"):
+                with st.form("resume_form"):
+                    entered = st.text_input("Visszatérési kód", type="password", max_chars=43)
+                    submit = st.form_submit_button("Folytatás")
+                if submit:
+                    st.query_params.from_dict({"round": control["round_id"], "resume": entered.strip()})
                     st.rerun()
-                except StorageError as exc:
-                    st.error(f"Nem sikerült a belépés mentése: {exc}")
-        with st.expander("🔑 Már játszottam — visszalépés kóddal"):
-            with st.form("resume_code_form"):
-                entered = st.text_input("Visszatérési kód", type="password", max_chars=43)
-                submit_resume = st.form_submit_button("Folytatás")
-            if submit_resume:
-                st.query_params.from_dict({"round": control["round_id"], "resume": entered.strip()})
-                st.rerun()
         return
 
-    st.write(f"Üdv, **{st.session_state.player_name}**!")
     if st.session_state.get("finished"):
         render_results()
         return
-    if phase(control) == "lobby":
-        st.session_state.was_waiting = True
-        live_player_panel()
-        st.caption("A játék az admin indításakor automatikusan megjelenik.")
+    actual_state = current_phase_verified(control)
+    st.session_state._screen_phase = actual_state
+    if actual_state == "finished":
+        render_results()
         return
-    if phase(control) == "finished":
-        st.session_state.was_waiting = True
+    if actual_state == "lobby":
+        st.html(hero("VÁRÓTEREM · LOBBY", f"Üdv a csapatban, {st.session_state.player_name}!", "Csatlakoztál a játékhoz. Az első feladat az admin rajtjelére jelenik meg.", "Készen állsz?", compact=False))
         live_player_panel()
+        st.html(section_title("Rajtra várunk", "Egyelőre nincs teendőd", "◷"))
+        lobby_population(control["round_id"])
+        st.html(status_banner("info", "A játék automatikusan megjelenik, amint a játékvezető elindítja."))
+        with st.expander("🔑 Visszatérési kód"):
+            st.code(st.session_state.resume_token, language=None)
+            st.caption("Az oldal teljes URL-jét is elmentheted – titkos visszatérési hivatkozás.")
         return
     render_game()
+
 
 @st.fragment(run_every="1s")
 def admin_live_status():
     try:
         control = cached_control()
         if not control:
-            st.info("Nincs még létrehozott forduló")
             return
-        current = phase(control)
-        text = {"lobby": "Várakozás", "running": "Folyamatban", "finished": "Lezárult"}[current]
-        st.write(f"**{control['round_number']}. forduló – {text}**")
-        if current == "running":
-            st.metric("Közös hátralévő idő", format_seconds(remaining_seconds(control)))
-        st.caption(f"Fordulóazonosító: {control['round_id'][:8]}")
+        state = phase(control)
+        time_value = format_seconds(remaining_seconds(control)) if state == "running" else ("–" if state == "lobby" else "00:00")
+        try:
+            players = len(cached_players(control["round_id"]))
+        except StorageError:
+            players = "–"
+        st.html('<div class="stats-grid">' +
+                stat_card("Játékosok", players, "violet") +
+                stat_card("Közös idő", time_value, "lime") +
+                stat_card("Forduló", f"#{control.get('round_number', 1)}", "blue") + '</div>')
     except StorageError as exc:
-        st.warning(f"Nem elérhető: {exc}")
+        st.warning(f"Az állapot átmenetileg nem elérhető: {exc}")
 
 
-def admin_action(callable_):
+def admin_action(action):
     try:
-        callable_()
+        action()
+        cached_players.clear()
         st.rerun()
     except (ValueError, StorageError) as exc:
         st.error(str(exc))
 
 
-def csv_bytes(records):
+def csv_bytes(rows):
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["helyezes", "nev", "helyes", "osszes", "pont", "megmentett_valaszok", "vegleges"])
+    fields = ["helyezes", "nev", "helyes", "osszes", "pont", "megmentett_valaszok", "vegleges"]
+    writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
     writer.writeheader()
-    writer.writerows(records)
+    writer.writerows(rows)
     return output.getvalue().encode("utf-8-sig")
 
 
@@ -454,132 +505,151 @@ def admin_leaderboard():
         control = cached_control()
         if not control:
             return
-        st.button("🔄 Ranglista frissítése")  # Egy kattintás újrafuttatja a fragmentet.
-        files = store().list_players(control["round_id"])
-        rows = []
-        for record in files:
-            result = score(PUZZLES, record.get("answers") or {})
-            rows.append({
-                "nev": record.get("name", "?"), "helyes": result["correct"],
-                "osszes": result["total"], "pont": result["points"],
-                "megmentett_valaszok": result["answered"],
-                "vegleges": "igen" if record.get("final") else "nem",
-            })
-        rows.sort(key=lambda r: (-r["pont"], -r["megmentett_valaszok"], r["nev"].casefold()))
-        for rank, row in enumerate(rows, 1):
-            row["helyezes"] = rank
-        st.caption(f"{len(rows)} regisztrált játékos · A félkész eredmények is szerepelnek, a véglegesek külön jelölve.")
-        if rows:
-            st.dataframe(rows, hide_index=True, use_container_width=True)
-            st.download_button("⬇️ Ranglista CSV letöltése", csv_bytes(rows), file_name=f"ranglista-{control['round_id'][:8]}.csv", mime="text/csv")
-            if phase(control) == "finished":
-                with st.expander("🗑 Egyedi eredmény törlése (csak lezárt forduló)"):
-                    records_by_id = {r["player_id"]: r for r in files}
-                    selected_id = st.selectbox(
-                        "Törlendő játékos", list(records_by_id.keys()),
-                        format_func=lambda pid: f"{records_by_id[pid].get('name', '?')} ({pid[:8]})",
-                    )
-                    approve = st.checkbox("Megerősítem az eredmény törlését")
-                    if st.button("Végleges eltávolítás az aktuális ranglistából", disabled=not approve):
-                        try:
-                            store().delete_player(control["round_id"], selected_id)
-                            st.rerun()
-                        except StorageError as exc:
-                            st.error(f"Törlés sikertelen: {exc}")
-        else:
-            st.info("Még nem csatlakozott játékos.")
+        if st.button("↻ Ranglista frissítése", key="refresh_scores"):
+            cached_players.clear()
+            st.rerun(scope="fragment")
+        records = cached_players(control["round_id"])
+        rows = leaderboard_rows(PUZZLES, records)
+        st.caption(f"{len(rows)} regisztrált játékos · a folyamatban lévő eredmények is látszanak.")
+        if not rows:
+            st.html('<div class="empty-state">Még nincs csatlakozott játékos.</div>')
+            return
+        st.dataframe([{k: row[k] for k in ("helyezes", "nev", "helyes", "osszes", "pont", "megmentett_valaszok", "vegleges")}
+                      for row in rows], use_container_width=True, hide_index=True)
+        st.download_button("↓ Ranglista letöltése (CSV)", csv_bytes(rows),
+                           file_name=f"ranglista-{control['round_id'][:8]}.csv", mime="text/csv")
+        st.html(podium(rows, "Élő top 3" if phase(control) == "running" else "A forduló dobogója"))
+        if phase(control) == "finished":
+            with st.expander("🗑 Egy játékos eredményének törlése"):
+                by_id = {r["player_id"]: r for r in records}
+                selected_id = st.selectbox("Játékos", list(by_id),
+                    format_func=lambda p: f"{by_id[p].get('name', '?')} ({p[:8]})")
+                confirm = st.checkbox("Megerősítem a törlést", key="delete_confirm")
+                if st.button("Eredmény törlése", disabled=not confirm):
+                    try:
+                        store().delete_player(control["round_id"], selected_id)
+                        cached_players.clear()
+                        st.rerun(scope="fragment")
+                    except StorageError as exc:
+                        st.error(f"Törlési hiba: {exc}")
     except StorageError as exc:
-        st.error(f"Nem sikerült lekérni az eredményeket: {exc}")
+        st.error(f"Ranglista hiba: {exc}")
 
 
 def render_admin():
-    st.header("🔐 Adminisztráció")
+    st.html(hero("GAME MASTER MODE", "Irányítópult", "Kezeld a fordulókat, az órát és a játékvezetői üzeneteket egy helyen.", "🔒 Védett adminfelület", compact=True))
     if not st.session_state.get("admin_authenticated"):
-        with st.form("admin_signin"):
-            password = st.text_input("Adminjelszó", type="password")
-            login = st.form_submit_button("Belépés")
-        if login:
-            if hmac.compare_digest(password, ADMIN_PASSWORD):
-                st.session_state.admin_authenticated = True
-                st.rerun()
-            else:
-                st.error("Hibás adminjelszó")
+        with st.container(key="auth-card"):
+            st.html(section_title("Admin bejelentkezés", "Csak a játékvezető léphet be", "♜"))
+            with st.form("admin_signin"):
+                password = st.text_input("Adminjelszó", type="password")
+                login = st.form_submit_button("Belépés →", type="primary", use_container_width=True)
+            if login:
+                if ADMIN_PASSWORD and hmac.compare_digest(password, ADMIN_PASSWORD):
+                    st.session_state.admin_authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Hibás adminjelszó")
         return
-    if st.button("🚪 Admin kijelentkezés"):
-        st.session_state.admin_authenticated = False
-        st.rerun()
-    admin_live_status()
+
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button("Kijelentkezés", key="admin_logout"):
+            st.session_state.admin_authenticated = False
+            st.rerun()
     try:
         control = cached_control()
     except StorageError as exc:
-        st.error(f"Nem sikerült betölteni a játékállapotot: {exc}")
+        st.error(f"A központi vezérlés nem érhető el: {exc}")
         return
-
     if not control:
-        st.info("A játék első indítása előtt hozz létre egy üres fordulót.")
-        if st.button("➕ Első forduló létrehozása", type="primary"):
-            admin_action(lambda: change_control(lambda old: old or new_lobby()))
+        st.html(section_title("Első forduló", "Indíts egy új játékot", "◈"))
+        with st.container(key="admin-panel"):
+            st.info("Még nincs forduló. Hozd létre az első, várakozó játékot.")
+            if st.button("+ Első forduló létrehozása", type="primary"):
+                admin_action(lambda: change_control(lambda old: old or new_lobby()))
         return
 
     state = phase(control)
-    st.subheader("⏱ Közös időzítés")
-    if state == "lobby":
-        with st.form("start_round"):
-            minutes = st.number_input("Játékidő (perc)", min_value=1, max_value=180, value=5, step=1)
-            start = st.form_submit_button("▶️ Forduló indítása", type="primary")
-        if start:
-            admin_action(lambda: change_control(lambda c: start_round(c, int(minutes))))
-    elif state == "running":
-        first, second = st.columns(2)
-        if first.button("➕ +1 perc", use_container_width=True):
-            admin_action(lambda: change_control(lambda c: set_remaining(c, remaining_seconds(c) + 60)))
-        if second.button("➖ −1 perc", use_container_width=True):
-            admin_action(lambda: change_control(lambda c: set_remaining(c, max(5, remaining_seconds(c) - 60))))
-        with st.form("custom_duration"):
-            minutes = st.number_input("Beállított hátralévő perc", min_value=0, max_value=360, value=5, step=1)
-            seconds = st.number_input("És másodperc", min_value=0, max_value=59, value=0, step=1)
-            set_clock = st.form_submit_button("Hátralévő idő beállítása")
-        if set_clock:
-            admin_action(lambda: change_control(lambda c: set_remaining(c, int(minutes) * 60 + int(seconds))))
-        if st.button("⏹ Forduló azonnali lezárása"):
-            admin_action(lambda: change_control(end_round))
-    else:
-        st.success("Az aktuális forduló véget ért.")
+    text = {"lobby": "Rajtra vár", "running": "Folyamatban", "finished": "Lezárult"}[state]
+    st.html(section_title(f"{control.get('round_number', 1)}. forduló · {text}", f"Azonosító: {control['round_id'][:8]}", "◉"))
+    admin_live_status()
 
-    st.subheader("📣 Üzenetküldés minden játékosnak")
-    with st.form("broadcast", clear_on_submit=True):
-        message = st.text_area("Üzenet", max_chars=250, height=90, placeholder="Például: Még két percetek van!")
-        send = st.form_submit_button("📨 Üzenet küldése")
-    if send:
-        admin_action(lambda: change_control(lambda c: send_message(c, message)))
-    if control.get("messages"):
-        st.caption(f"Legutóbbi üzenet: {control['messages'][-1]['text']}")
+    left, right = st.columns([1, 1], gap="medium")
+    with left:
+        st.html(section_title("Játékvezérlés", "Közös idő és rajt", "◷"))
+        with st.container(key="admin-panel"):
+            if state == "lobby":
+                with st.form("start_round"):
+                    minutes = st.number_input("Játékidő (perc)", min_value=1, max_value=180, value=5)
+                    if st.form_submit_button("▶ Forduló indítása", type="primary", use_container_width=True):
+                        admin_action(lambda: change_control(lambda c: start_round(c, int(minutes))))
+            elif state == "running":
+                st.html(status_banner("info", "Az óra közös: minden játékos ugyanazt az időt látja."))
+                plus, minus = st.columns(2, wrap=False)
+                if plus.button("+1 perc", use_container_width=True):
+                    admin_action(lambda: change_control(lambda c: set_remaining(c, remaining_seconds(c) + 60)))
+                if minus.button("−1 perc", use_container_width=True):
+                    admin_action(lambda: change_control(lambda c: set_remaining(c, max(5, remaining_seconds(c) - 60))))
+                with st.form("set_clock"):
+                    minutes = st.number_input("Hátralévő perc", min_value=0, max_value=360, value=5)
+                    seconds = st.number_input("Hátralévő másodperc", min_value=0, max_value=59, value=0)
+                    if st.form_submit_button("Hátralévő idő beállítása", use_container_width=True):
+                        admin_action(lambda: change_control(lambda c: set_remaining(c, int(minutes) * 60 + int(seconds))))
+                with st.expander("⏹ Forduló lezárása"):
+                    if st.button("Forduló azonnali lezárása", key="stop_round"):
+                        admin_action(lambda: change_control(end_round))
+            else:
+                st.success("Ez a forduló véget ért.")
+                visible = bool(control.get("reveal_podium", False))
+                if st.button("🏆 Dobogó elrejtése" if visible else "🏆 Dobogó közzététele", type="primary", use_container_width=True):
+                    admin_action(lambda: change_control(lambda c: set_podium_visibility(c, not visible)))
+                st.caption("A közzétett dobogót a játékosok az eredményoldalukon láthatják.")
 
-    st.subheader("🏆 Közös ranglista")
-    admin_leaderboard()
+    with right:
+        st.html(section_title("Üzenet a játékosoknak", "Automatikus frissítés néhány másodpercenként", "✉"))
+        with st.container(key="admin-messages"):
+            with st.form("broadcast", clear_on_submit=True):
+                message = st.text_area("Üzenet", max_chars=250, height=110, placeholder="Például: Még két percetek van, hajrá!")
+                if st.form_submit_button("📣 Üzenet küldése", type="primary", use_container_width=True):
+                    admin_action(lambda: change_control(lambda c: send_message(c, message)))
+            if control.get("messages"):
+                st.html(announcement(control["messages"][-1]["text"]))
+                with st.expander("Korábbi üzenetek"):
+                    for msg in reversed(control["messages"][:-1]):
+                        st.write(msg["text"])
 
-    st.subheader("🔄 Új forduló")
-    st.caption("Az új forduló új azonosítót és üres ranglistát kap; a korábbi játékosfájlokat megőrizzük.")
-    confirm = st.checkbox("Megerősítem, hogy új fordulót szeretnék indítani")
-    if st.button("🆕 Új, üres forduló létrehozása", disabled=not confirm):
-        admin_action(lambda: change_control(lambda c: new_lobby(c["round_number"] + 1)))
+    st.html(section_title("Ranglista és dobogó", "Automatikus és kézi frissítéssel", "★"))
+    with st.container(key="admin-table"):
+        admin_leaderboard()
+
+    st.html(section_title("Fordulókezelés", "Az előző eredmények nem vesznek el", "↻"))
+    with st.container(key="admin-danger"):
+        st.caption("Új forduló → új azonosító, tiszta eredménylista. A korábbi JSON-fájlok megmaradnak a privát repositoryban.")
+        confirmed = st.checkbox("Megerősítem, hogy új fordulót szeretnék")
+        if st.button("+ Új, üres forduló létrehozása", disabled=not confirmed, use_container_width=True):
+            admin_action(lambda: change_control(lambda c: new_lobby(c["round_number"] + 1)))
 
 
-st.title("🧩 Képrejtvény kihívás")
+# ---------- Entry point ----------
 if not ADMIN_PASSWORD:
-    st.error("Hiányzik az ADMIN_PASSWORD. Másold a .streamlit/secrets.example.toml fájlt .streamlit/secrets.toml néven és állítsd be a jelszót.")
+    st.error("Az ADMIN_PASSWORD nincs beállítva. Hozd létre a .streamlit/secrets.toml fájlt a minta alapján.")
     st.stop()
 if MODE == "github" and len(ADMIN_PASSWORD) < 12:
-    st.error("Éles GitHub-módban legalább 12 karakteres adminjelszó szükséges.")
+    st.error("Éles GitHub-módban legalább 12 karakteres adminjelszó kell.")
     st.stop()
-if MODE == "local":
-    st.sidebar.warning("🧪 Helyi tárolás (nem felhőbe való)")
 try:
-    store()  # Korán jelezzük a konfigurációs hibákat.
+    store()
 except StorageError as exc:
     st.error(str(exc))
     st.stop()
-view = st.sidebar.radio("Nézet", ["🎮 Játékos", "🔐 Admin"], key="view")
+
+with st.sidebar:
+    st.html('<div class="party-caption">NÉZETVÁLASZTÁS</div>')
+    if MODE == "local":
+        st.caption("🧪 Helyi tesztmód")
+    view = st.radio("Nézet", ["🎮 Játékos", "🔐 Admin"], label_visibility="collapsed", key="view")
+    st.caption("PUZZLE PARTY · V5")
+st.html(header(admin=(view == "🔐 Admin")))
 if view == "🔐 Admin":
     render_admin()
 else:
