@@ -13,7 +13,7 @@ from pathlib import Path
 import streamlit as st
 
 from game_logic import (
-    end_round, format_seconds, new_lobby, phase, remaining_seconds,
+    answer_feedback, end_round, format_seconds, new_lobby, phase, remaining_seconds,
     send_message, set_remaining, start_round, set_podium_visibility,
 )
 from resume_logic import (
@@ -91,6 +91,7 @@ def load_puzzles():
 
 PUZZLES = load_puzzles()
 PUZZLE_IDS = {p["id"] for p in PUZZLES}
+PUZZLES_BY_ID = {p["id"]: p for p in PUZZLES}
 
 
 def load_record_to_session(record, token):
@@ -109,6 +110,8 @@ def load_record_to_session(record, token):
     st.session_state.save_error = None
     st.session_state.last_saved = None
     st.session_state.last_saved_puzzle = None
+    st.session_state.submit_feedback = {}
+    st.session_state.submitted_correct = dict(record.get("submitted_correct") or {})
     # A text_input widget-állapotát a legutóbbi GitHub-mentés alapján építjük fel.
     for puzzle in PUZZLES:
         st.session_state[f"answer_{puzzle['id']}"] = st.session_state.answers.get(puzzle["id"], "")
@@ -125,6 +128,7 @@ def enroll_player(control, name):
         "order": random.sample(range(len(PUZZLES)), len(PUZZLES)),
         "position": 0,
         "answers": {},
+        "submitted_correct": {},
         "final": False,
         "updated_at": time.time(),
     }
@@ -150,7 +154,7 @@ def try_restore(control):
         st.warning("Ez egy korábbi forduló visszatérési linkje. Az új fordulóhoz újra csatlakozhatsz.")
         if st.button("🆕 Csatlakozás az aktuális fordulóhoz"):
             st.query_params.clear()
-            for key in ("round_id", "player_name", "answers", "position", "resume_token"):
+            for key in ("round_id", "player_name", "answers", "position", "resume_token", "submitted_correct"):
                 st.session_state.pop(key, None)
             st.rerun()
         st.stop()
@@ -202,12 +206,16 @@ def save_answer(puzzle_id, field_key, *, position=None):
         def patch(record):
             if puzzle_id in PUZZLE_IDS and (answer != (record.get("answers") or {}).get(puzzle_id, "")):
                 record = with_answer(record, puzzle_id, answer)
+                submitted_correct = dict(record.get("submitted_correct") or {})
+                submitted_correct.pop(puzzle_id, None)
+                record["submitted_correct"] = submitted_correct
             if position is not None and record.get("position", 0) != position:
                 record = with_position(record, position)
             return record
 
         record = store().update_player(st.session_state.round_id, st.session_state.player_id, patch)
         st.session_state.answers = record.get("answers") or {}
+        st.session_state.submitted_correct = dict(record.get("submitted_correct") or {})
         st.session_state.position = record.get("position", current_position)
         st.session_state.save_error = None
         st.session_state.last_saved = time.strftime("%H:%M:%S")
@@ -218,8 +226,44 @@ def save_answer(puzzle_id, field_key, *, position=None):
         return False
 
 
+def submit_answer(puzzle_id, field_key):
+    """Save and immediately classify the submitted guess for this puzzle only."""
+    if not save_answer(puzzle_id, field_key):
+        return False
+    puzzle = PUZZLES_BY_ID.get(puzzle_id)
+    if not puzzle:
+        st.session_state.save_error = "Ismeretlen feladvány."
+        return False
+    submitted = st.session_state.get("answers", {}).get(puzzle_id, "")
+    level = answer_feedback(puzzle, submitted)
+
+    def patch_submission(record):
+        submitted_correct = dict(record.get("submitted_correct") or {})
+        if level == "correct":
+            submitted_correct[puzzle_id] = True
+        else:
+            submitted_correct.pop(puzzle_id, None)
+        record["submitted_correct"] = submitted_correct
+        return record
+
+    try:
+        record = store().update_player(st.session_state.round_id, st.session_state.player_id, patch_submission)
+    except (StorageError, ValueError) as exc:
+        st.session_state.save_error = str(exc)
+        return False
+    feedback = dict(st.session_state.get("submit_feedback") or {})
+    feedback[puzzle_id] = {"level": level, "at": time.strftime("%H:%M:%S")}
+    st.session_state.submit_feedback = feedback
+    st.session_state.submitted_correct = dict(record.get("submitted_correct") or {})
+    return True
+
+
 def on_answer_change(puzzle_id, field_key):
-    """A st.text_input(live='1.5s') szünetenként automatikusan hívja."""
+    """A st.text_input(live='1s') szünetenként automatikusan hívja."""
+    feedback = dict(st.session_state.get("submit_feedback") or {})
+    if puzzle_id in feedback:
+        feedback.pop(puzzle_id, None)
+        st.session_state.submit_feedback = feedback
     save_answer(puzzle_id, field_key)
 
 
@@ -336,7 +380,7 @@ def render_game():
     live_player_panel()
     st.html('<div class="mini-grid">' +
             mini_label("Aktuális feladat", f"{index + 1} / {len(order)}") +
-            mini_label("Mentett válaszok", f"{answered} / {len(PUZZLES)}", "lime") +
+            mini_label("Kitöltött válaszok", f"{answered} / {len(PUZZLES)}", "lime") +
             mini_label("Pontozás", "1 / helyes") + '</div>')
     st.caption("Minden megszerzett tárgy 3 pont.")
     st.progress(answered / len(PUZZLES))
@@ -360,7 +404,7 @@ def render_game():
             st.session_state[field_key] = saved_answer
         st.text_input(
             "Megfejtés", key=field_key, max_chars=120,
-            placeholder="Írd ide a megfejtést…", live="1.5s",
+            placeholder="Írd ide a megfejtést…", live="1s",
             on_change=on_answer_change, args=(puzzle["id"], field_key),
             help="Gépelési szünet után a rendszer központilag elmenti a választ.",
         )
@@ -369,22 +413,30 @@ def render_game():
             if st.button("🔄 Mentés újrapróbálása", key=f"retry_{puzzle['id']}"):
                 save_answer(puzzle["id"], field_key)
                 st.rerun()
-        elif st.session_state.get("last_saved") and st.session_state.get("last_saved_puzzle") == puzzle["id"]:
-            st.html(status_banner("ok", f"Mentve · {st.session_state.last_saved}"))
-        else:
-            st.html(status_banner("info", "Automatikus mentés gépelés után, vagy a Mentés gombbal."))
+        feedback = (st.session_state.get("submit_feedback") or {}).get(puzzle["id"])
+        if feedback:
+            kind = feedback.get("level")
+            if kind == "correct":
+                st.html(status_banner("ok", f"HELYES ✅"))
+            elif kind == "close":
+                st.html(status_banner("info", f"You are so clooose 🟡"))
+            else:
+                st.html(status_banner("warn", f"LOL Nem❌"))
 
     st.html(section_title("Haladás", "Szabadon lépkedhetsz a rejtvények között", "↗"))
     with st.container(key="game-controls"):
-        left, middle, right = st.columns(3, gap="small", vertical_alignment="center", wrap=True)
+        left, submit_col, right = st.columns(3, gap="small", vertical_alignment="center", wrap=True)
         if left.button("← Előző", disabled=index == 0, use_container_width=True):
             save_and_navigate(puzzle["id"], field_key, index - 1)
-        if middle.button("Mentés", use_container_width=True):
-            save_and_navigate(puzzle["id"], field_key, index)
+        if submit_col.button("Beküldés", type="primary", use_container_width=True):
+            if submit_answer(puzzle["id"], field_key):
+                st.rerun()
+            else:
+                st.warning("A beküldéshez előbb sikeresen el kell menteni a választ.")
         if right.button("Következő →", disabled=index == len(order) - 1, type="primary", use_container_width=True):
             save_and_navigate(puzzle["id"], field_key, index + 1)
 
-    st.html('<div class="puzzle-jump-hint">Válassz feladatot · ✓ = már van elmentett válasz</div>')
+    st.html('<div class="puzzle-jump-hint">Válassz feladatot · ✅ = helyesen beküldve</div>')
     # Mobilon is tördülhessen, ne okozzon vízszintes görgetést.
     with st.container(key="jump-grid"):
         for start in range(0, len(order), 5):
@@ -394,9 +446,9 @@ def render_game():
                 if target >= len(order):
                     continue
                 selected_puzzle = PUZZLES[order[target]]
-                has_answer = bool(str(st.session_state.answers.get(selected_puzzle["id"], "")).strip())
-                label = f"{target + 1}{' ✓' if has_answer else ''}"
-                if col.button(label, key=f"jump_{target}", type="primary" if target == index else "secondary", use_container_width=True):
+                submitted_ok = bool((st.session_state.get("submitted_correct") or {}).get(selected_puzzle["id"]))
+                label = f"{target + 1}{' ✅' if submitted_ok else ''}"
+                if col.button(label, key=f"jump_{target}", type="primary" if target == index or submitted_ok else "secondary", use_container_width=True):
                     save_and_navigate(puzzle["id"], field_key, target)
 
     with st.expander("🔑 Visszatérési link / kód"):

@@ -1,5 +1,5 @@
 from game_logic import (
-    end_round, format_seconds, is_correct, new_lobby, phase,
+    answer_feedback, end_round, format_seconds, is_correct, new_lobby, phase,
     remaining_seconds, score, send_message, set_remaining, start_round,
 )
 from storage import LocalStore
@@ -35,6 +35,14 @@ def test_scoring():
     assert is_correct(puzzles[0], "NAP SZEMÜVEG!!")
     result = score(puzzles, {"a": "nap szemuveg", "b": "rossz"})
     assert result == {"correct": 1, "total": 2, "points": 1, "answered": 2}
+
+
+def test_answer_feedback_levels():
+    puzzle = {"id": "a", "answers": ["napszemüveg"]}
+    assert answer_feedback(puzzle, "nap szemuveg") == "correct"
+    assert answer_feedback(puzzle, "napszemuve") == "close"
+    assert answer_feedback(puzzle, "kutyaház") == "wrong"
+    assert answer_feedback(puzzle, "") == "wrong"
 
 
 def test_local_store_round_isolation(tmp_path):

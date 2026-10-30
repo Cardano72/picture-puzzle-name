@@ -6,7 +6,7 @@ Magyar nyelvű, telefonra optimalizált, Python + Streamlit alapú képrejtvény
 
 - Modern Party **reszponzív** megjelenés; különálló, fehér rejtvénykártya a képeknek és a megfejtésnek.
 - **Váróterem**, amely a játékvezető rajtjelére automatikusan átvált a rejtvényekre.
-- **Játékosfelület**: közös élő visszaszámláló, 5-ös rácsban számozott, tetszőlegesen választható feladatok, előző/következő gombok, mentési státusz.
+- **Játékosfelület**: közös élő visszaszámláló, 5-ös rácsban számozott, tetszőlegesen választható feladatok, előző/következő gombok, automatikus mentés és beküldési visszajelzés (*rossz / közel / helyes*).
 - **Admin dashboard**: közös óra, ±1 perc, pontos hátralévő idő, üzenetküldés, élő eredménylista és CSV-export.
 - **Játék vége**: a játékos csak a lezárás tényét látja; részletes eredmény kizárólag az admin felületen jelenik meg.
 - **Dobogó**: admin az *eredményhirdetéskor* teheti közzé vagy rejtheti el az admin nézetben.
@@ -84,7 +84,7 @@ A `secrets.toml` a `.gitignore` szabályával ki van zárva a feltöltésből. *
 2. A bal felső menün keresztül válts az **Admin** nézetre, és jelentkezz be a jelszóval.
 3. Hozz létre egy fordulót; a játékos ablakában add meg a nevet. A játékos **váróterembe** kerül.
 4. Admin indítsa el az 5 perces játékot. A játékosnál a képrejtvények megnyílnak (néhány másodpercen belül).
-5. Írj be egy választ; várj kb. **1,5 másodpercet**. A mentési státusz jelzi, hogy a központi JSON frissült. Próbáld a számozott feladatugrást, a visszalépést és a Mentés gombot is.
+5. Írj be egy választ; várj kb. **1 másodpercet**, hogy az automatikus mentés lefusson. Próbáld a számozott feladatugrást, a visszalépést és a Beküldés gombot is; a Beküldés külön visszajelzést ad (*rossz / közel / helyes*), de nem mutat teljes eredményt.
 6. Mentsd el a játékos teljes `?round=...&resume=...` címét. Frissítés, bezárás, majd a link újranyitása után ugyanazok a válaszok és feladatsorrend jöjjön vissza.
 7. Admin változtassa meg az időt, és küldjön üzenetet. A közös óra és üzenet a játékosnál frissül.
 8. Várd meg a végét vagy zárd le adminból. A játékosnál csak a lezárás jelenjen meg, részletes pontszám és megoldáslista nélkül.
@@ -117,7 +117,7 @@ A számlálót a Streamlit `st.fragment(run_every="1s")` frissíti; a központi 
 ## Fontos korlátok
 
 - **GitHub Contents API ≠ adatbázis.** A JSON-fájlok külön mentődnek, de 10–20 játékossal is érdemes éles főpróbát tartani; gyors gépelés, sok mentés vagy ütköző műveletek esetén API-korlátok léphetnek fel.
-- Az automatikus mentés **1,5 másodperces gépelési szünet után** indul; ha valaki gyorsan bezárja a böngészőt vagy lejár az idő, a legutóbbi néhány karakter elveszhet. A Mentés gomb azonnal elküldi a mező értékét.
+- Az automatikus mentés **1 másodperces gépelési szünet után** indul; ha valaki gyorsan bezárja a böngészőt vagy lejár az idő, a legutóbbi néhány karakter elveszhet. A Beküldés gomb menti az aktuális mezőt, majd azonnali *rossz / közel / helyes* visszajelzést ad az aktuális feladványra.
 - Az `app.py` és a `puzzles.json` a publikus kódrepositoriban **bárki számára olvasható**. Baráti játékra jó kompromisszum, de komoly, csalásbiztos versenyhez privát válaszellenőrzés és valódi backend szükséges.
 - **Visszatérési kód**: titkos jogosultsági kulcs, aki ismeri, hozzáférhet a mentett játékhoz. A közös QR-kódba csak a Streamlit app alap URL-jét tedd.
 - A GitHub-kapcsolat és a Streamlit feldolgozás időigénye miatt az idő lejárásának pillanatában lehet egy rövid versenyhelyzet. A program ellenőrzi az aktív fordulót mentés előtt, de garantáltan csalásbiztos megoldáshoz adatbázis-tranzakció kellene.

@@ -5,6 +5,7 @@ import re
 import time
 import unicodedata
 import uuid
+from difflib import SequenceMatcher
 
 POINTS_PER_CORRECT = 1
 
@@ -54,6 +55,23 @@ def normalize_answer(answer):
 def is_correct(puzzle, answer):
     value = normalize_answer(answer)
     return bool(value) and any(value == normalize_answer(valid) for valid in puzzle["answers"])
+
+
+def answer_feedback(puzzle, answer):
+    """Classify a submitted answer without revealing full round results."""
+    value = normalize_answer(answer)
+    if not value:
+        return "wrong"
+    accepted = [normalize_answer(valid) for valid in puzzle["answers"]]
+    accepted = [valid for valid in accepted if valid]
+    if any(value == valid for valid in accepted):
+        return "correct"
+    closest = 0.0
+    for valid in accepted:
+        if min(len(value), len(valid)) < 4:
+            continue
+        closest = max(closest, SequenceMatcher(None, value, valid).ratio())
+    return "close" if closest >= 0.78 else "wrong"
 
 
 def score(puzzles, answers):
