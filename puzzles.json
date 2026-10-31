@@ -1,37 +1,212 @@
 [
   {
-    "id": "nap-szemuveg",
-    "title": "Nap és szemüveg",
-    "image": "images/01_napszemuveg.png",
-    "question": "Milyen összetett szó jut eszedbe a két rajzról?",
-    "answers": ["napszemüveg"]
+    "id": "barnitokrem",
+    "title": "Barnitokrem",
+    "image": "images/01_barnitokrem.jpg",
+    "question": "Ez könnyű lesz, max megtalálni nem.",
+    "answers": [
+      "barnitokrem"
+    ]
   },
   {
-    "id": "alma-fa",
-    "title": "Alma és fa",
-    "image": "images/02_almafa.png",
-    "question": "Mi a két ábra közös megfejtése?",
-    "answers": ["almafa"]
+    "id": "kattintas",
+    "title": "Kattintas",
+    "image": "images/03_kattintas.jpg",
+    "question": "Ez nem biztos, hogy egy konkrét tárgy lesz.",
+    "answers": [
+      "kattintas"
+    ]
   },
   {
-    "id": "jeg-kave",
-    "title": "Jég és kávé",
-    "image": "images/03_jegeskave.png",
-    "question": "Milyen italt rejtenek az ábrák?",
-    "answers": ["jegeskávé", "jeges kávé"]
+    "id": "zsurkocsi",
+    "title": "Zsurkocsi",
+    "image": "images/03_zsurkocsi.jpg",
+    "question": "Attila <3",
+    "answers": [
+      "zsurkocsi"
+    ]
   },
   {
-    "id": "kutya-haz",
-    "title": "Kutya és ház",
-    "image": "images/04_kutyahaz.png",
-    "question": "Milyen szót raknál össze a két képből?",
-    "answers": ["kutyaház"]
+    "id": "ramaty-ing",
+    "title": "Ramaty Ing",
+    "image": "images/04_ramaty_ing.jpg",
+    "question": "Jó, ez a legtrashebb az egészben, előre is bocsi.",
+    "answers": [
+      "ramaty ing",
+      "ramatying"
+    ]
   },
   {
-    "id": "ho-ember",
-    "title": "Hó és ember",
-    "image": "images/05_hoember.png",
-    "question": "Melyik összetett szóra gondoltunk?",
-    "answers": ["hóember"]
+    "id": "telefontolto",
+    "title": "Telefontolto",
+    "image": "images/05_telefontolto.jpg",
+    "question": "Néhány embert fel kellett szeletelni.",
+    "answers": [
+      "telefontolto"
+    ]
+  },
+  {
+    "id": "tomi",
+    "title": "Tomi",
+    "image": "images/06_tomi.jpg",
+    "question": "Ő itt Tomi.",
+    "answers": [
+      "tomi"
+    ]
+  },
+  {
+    "id": "ontozokanna",
+    "title": "Ontozokanna",
+    "image": "images/07_ontozokanna.jpg",
+    "question": "Ha elsőre nem találod el, próbálkozz még nyugodtan.",
+    "answers": [
+      "ontozokanna"
+    ]
+  },
+  {
+    "id": "elemes-eszkoz",
+    "title": "Elemes Eszkoz",
+    "image": "images/08_elemes_eszkoz.jpg",
+    "question": "Well, kitalálni szar, de legalább ilyet találni egyszerű. (Asszem)",
+    "answers": [
+      "elemes eszkoz",
+      "elemeseszkoz"
+    ]
+  },
+  {
+    "id": "tusfurdo",
+    "title": "Tusfurdo",
+    "image": "images/09_tusfurdo.jpg",
+    "question": "Becézgesd csak.",
+    "answers": [
+      "tusfurdo"
+    ]
+  },
+  {
+    "id": "marcipan",
+    "title": "Marcipan",
+    "image": "images/10_marcipan.jpg",
+    "question": "Oké, ez egy free kör.",
+    "answers": [
+      "marcipan"
+    ]
+  },
+  {
+    "id": "negyjegyu-fuggvenytablazat",
+    "title": "Negyjegyu Fuggvenytablazat",
+    "image": "images/11_negyjegyu_fuggvenytablazat.jpg",
+    "question": "Magyar iskolások előnyben.",
+    "answers": [
+      "negyjegyu fuggvenytablazat",
+      "negyjegyufuggvenytablazat"
+    ]
+  },
+  {
+    "id": "hajszarito",
+    "title": "Hajszarito",
+    "image": "images/12_hajszarito.jpg",
+    "question": "Am azt tudtátok, hogy a Kaszpi tenger az nem is tenger?",
+    "answers": [
+      "hajszarito"
+    ]
+  },
+  {
+    "id": "serpenyo",
+    "title": "Serpenyo",
+    "image": "images/13_serpenyo.jpg",
+    "question": "Top tier fegyver.",
+    "answers": [
+      "serpenyo"
+    ]
+  },
+  {
+    "id": "korso",
+    "title": "Korso",
+    "image": "images/14_korso.jpg",
+    "question": "Az LY az egy betű.",
+    "answers": [
+      "korso"
+    ]
+  },
+  {
+    "id": "diszparna",
+    "title": "Diszparna",
+    "image": "images/15_diszparna.jpg",
+    "question": "Begyűjtés az könnyű lesz.",
+    "answers": [
+      "diszparna"
+    ]
+  },
+  {
+    "id": "villanykorte",
+    "title": "Villanykorte",
+    "image": "images/16_villanykorte.jpg",
+    "question": "Klasszik.",
+    "answers": [
+      "villanykorte"
+    ]
+  },
+  {
+    "id": "papirtekercs",
+    "title": "Papirtekercs",
+    "image": "images/17_papirtekercs.jpg",
+    "question": "Begyűjtésnél azért kész dolgot keressünk.",
+    "answers": [
+      "papirtekercs"
+    ]
+  },
+  {
+    "id": "futballmez",
+    "title": "Futballmez",
+    "image": "images/18_futballmez.jpg",
+    "question": "Easy.",
+    "answers": [
+      "futballmez"
+    ]
+  },
+  {
+    "id": "napszemuveg",
+    "title": "Napszemuveg",
+    "image": "images/19_napszemuveg.jpg",
+    "question": "Tessék nem összetörni.",
+    "answers": [
+      "napszemuveg"
+    ]
+  },
+  {
+    "id": "falevel",
+    "title": "Falevel",
+    "image": "images/20_falevel.jpg",
+    "question": "Ehhez lehet cipő fog kelleni.",
+    "answers": [
+      "falevel"
+    ]
+  },
+  {
+    "id": "vaszontaska",
+    "title": "Vaszontaska",
+    "image": "images/21_vaszontaska.jpg",
+    "question": "Nektek mik voltak a kötelezők alsó tagozatban?",
+    "answers": [
+      "vaszontaska"
+    ]
+  },
+  {
+    "id": "torolkozo",
+    "title": "Torolkozo",
+    "image": "images/22_torolkozo.jpg",
+    "question": "Könnyű ez. Begyűjteni is.",
+    "answers": [
+      "torolkozo"
+    ]
+  },
+  {
+    "id": "diploma",
+    "title": "Diploma",
+    "image": "images/23_diploma.jpg",
+    "question": "Lehet kell egy kis angol nyelvhasználat.",
+    "answers": [
+      "diploma"
+    ]
   }
 ]

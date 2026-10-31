@@ -34,7 +34,7 @@ picture-puzzle-game/
 ├── ui.py
 ├── puzzles.json
 ├── images/
-│   └── 01_napszemuveg.png ... (5 minta)
+│   └── saját képek (23 db, például 01_solution-name.png ... 23_solution-name.png)
 ├── styles/
 │   └── modern_party.css
 ├── .streamlit/
